@@ -1,4 +1,6 @@
 from __future__ import annotations
+from ..utils.interrupt_handler import InterruptHandler
+
 
 import asyncio
 import json
@@ -142,6 +144,11 @@ class AudioRecognition:
 
         self._user_turn_span: trace.Span | None = None
         self._closing = asyncio.Event()
+
+        self._interrupt_handler = InterruptHandler()
+        self._pending_vad_interrupt = False
+        self._activity: Any | None = None
+
 
     def update_options(
         self,
@@ -344,7 +351,31 @@ class AudioRecognition:
             return
 
         if ev.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
+
             transcript = ev.alternatives[0].text
+            
+            # --- INTERRUPT DECISION LOGIC ---
+            agent_is_speaking = getattr(self._activity, "is_speaking", False)
+
+            decision = self._interrupt_handler.evaluate(transcript, agent_is_speaking)
+
+            # Soft ack → ignore only if agent speaking
+            if decision == "ignore":
+                return
+
+            # Hard command → interrupt now
+            if decision == "interrupt":
+                if hasattr(self._activity, "stop_speaking"):
+                    self._activity.stop_speaking()
+
+                # Pass control to agent immediately
+                if hasattr(self._activity, "handle_user_text"):
+                    await self._activity.handle_user_text(transcript)
+
+                self._pending_vad_interrupt = False
+                return
+# --------------------------------
+
             language = ev.alternatives[0].language
             confidence = ev.alternatives[0].confidence
 
@@ -356,6 +387,44 @@ class AudioRecognition:
             if not transcript:
                 return
 
+            # ------------------------------------
+            #     INTERRUPT HANDLER INJECTION
+            # ------------------------------------
+            agent_is_speaking = getattr(self._activity, "is_speaking", False)
+
+            # Handle VAD early-interrupt scenario
+            if self._pending_vad_interrupt:
+                self._pending_vad_interrupt = False
+                decision = self._interrupt_handler.evaluate(transcript, agent_is_speaking)
+
+                if decision == "ignore":
+                    return
+
+                if decision == "interrupt":
+                    if hasattr(self._activity, "stop_speaking"):
+                        self._activity.stop_speaking()
+                    self._activity.handle_user_text(transcript)
+                    return
+
+            # Normal STT interruption logic
+            decision = self._interrupt_handler.evaluate(transcript, agent_is_speaking)
+
+            # Soft ack ("yeah", "ok") while TTS is speaking → IGNORE
+            if decision == "ignore":
+                return
+
+            # Hard commands ("stop", "wait") → immediate interrupt
+            if decision == "interrupt":
+                if hasattr(self._activity, "stop_speaking"):
+                    self._activity.stop_speaking()
+                self._activity.handle_user_text(transcript)
+                return
+
+            # ------------------------------------
+            #      END INTERRUPT HANDLER LAYER
+            # ------------------------------------
+
+            # Original LiveKit processing
             self._hooks.on_final_transcript(
                 ev,
                 speaking=self._speaking if self._vad else None,
@@ -375,11 +444,7 @@ class AudioRecognition:
             self._final_transcript_received.set()
 
             if not self._vad or self._last_speaking_time == 0:
-                # vad disabled, use stt timestamp
-                # TODO: this would screw up transcription latency metrics
-                # but we'll live with it for now.
-                # the correct way is to ensure STT fires SpeechEventType.END_OF_SPEECH
-                # and using that timestamp for _last_speaking_time
+                # vad disabled → fallback timestamp
                 self._last_speaking_time = time.time()
 
             if self._vad_base_turn_detection or self._user_turn_committed:
@@ -397,9 +462,6 @@ class AudioRecognition:
                         )
                     )
 
-                if not self._speaking:
-                    chat_ctx = self._hooks.retrieve_chat_ctx().copy()
-                    self._run_eou_detection(chat_ctx)
 
         elif ev.type == stt.SpeechEventType.PREFLIGHT_TRANSCRIPT:
             self._hooks.on_interim_transcript(ev, speaking=self._speaking if self._vad else None)
@@ -445,6 +507,17 @@ class AudioRecognition:
             self._audio_interim_transcript = ev.alternatives[0].text
 
         elif ev.type == stt.SpeechEventType.END_OF_SPEECH and self._turn_detection_mode == "stt":
+            # VAD EARLY INTERRUPT: agent is speaking, but VAD ended too early
+            if getattr(self._activity, "is_speaking", False):
+                self._pending_vad_interrupt = True
+
+            # ------------------------------
+            # VAD EARLY INTERRUPT HOOK
+            # Agent is speaking → VAD is too early → delay until FINAL_TRANSCRIPT
+            # ------------------------------
+            if getattr(self._activity, "is_speaking", False):
+                self._pending_vad_interrupt = True
+
             with trace.use_span(self._ensure_user_turn_span()):
                 self._hooks.on_end_of_speech(None)
 
@@ -454,6 +527,7 @@ class AudioRecognition:
 
             chat_ctx = self._hooks.retrieve_chat_ctx().copy()
             self._run_eou_detection(chat_ctx)
+
 
         elif ev.type == stt.SpeechEventType.START_OF_SPEECH and self._turn_detection_mode == "stt":
             with trace.use_span(self._ensure_user_turn_span()):

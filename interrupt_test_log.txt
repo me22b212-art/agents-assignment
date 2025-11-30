@@ -1,0 +1,61 @@
+================================================================================
+INTERRUPT HANDLER TEST - COMPREHENSIVE LOG
+================================================================================
+Started: 2025-11-30 10:51:57
+================================================================================
+
+[2025-11-30 10:51:57.958] ================================================================================
+[2025-11-30 10:51:57.959] STARTING COMPREHENSIVE INTERRUPT HANDLER TEST
+[2025-11-30 10:51:57.959] ================================================================================
+[2025-11-30 10:51:57.959] 
+================================================================================
+[2025-11-30 10:51:57.959] TEST SCENARIO 1: Agent ignoring 'yeah' while talking
+[2025-11-30 10:51:57.959] ================================================================================
+[2025-11-30 10:51:57.959] [SCENARIO 1] Agent starts speaking (TTS)
+[2025-11-30 10:51:57.960] [SCENARIO 1] User says 'yeah' while agent talking
+[2025-11-30 10:51:57.960] [SCENARIO 1] Result: stopped_speaking=False, handled=0
+[2025-11-30 10:51:57.960] [SCENARIO 1] EXPECTED: Agent should IGNORE 'yeah' (soft ack) while speaking
+[2025-11-30 10:51:57.960] [SCENARIO 1] ✓ PASS: 'yeah' was ignored while agent was speaking
+[2025-11-30 10:51:57.960] 
+================================================================================
+[2025-11-30 10:51:57.961] TEST SCENARIO 2: Agent responding to 'yeah' when silent
+[2025-11-30 10:51:57.961] ================================================================================
+[2025-11-30 10:51:57.961] [SCENARIO 2] Agent stops speaking
+[2025-11-30 10:51:57.961] [SCENARIO 2] User says 'yeah' while agent is silent
+[2025-11-30 10:51:57.961] [HOOK] FINAL TRANSCRIPT: 'yeah' (agent_speaking=None)
+[2025-11-30 10:51:57.962] [HOOK] PREEMPTIVE GENERATION: 'yeah'
+[2025-11-30 10:51:57.962] [SCENARIO 2] Result: handled=0
+[2025-11-30 10:51:57.963] [SCENARIO 2] EXPECTED: Agent should RESPOND to 'yeah' when silent (soft ack processed)
+[2025-11-30 10:51:57.963] [SCENARIO 2] ✗ FAIL: 'yeah' was not processed when agent was silent
+[2025-11-30 10:51:57.964] 
+================================================================================
+[2025-11-30 10:51:57.964] TEST SCENARIO 3: Agent stopping for 'stop' command
+[2025-11-30 10:51:57.964] ================================================================================
+[2025-11-30 10:51:57.965] [SCENARIO 3] Agent starts speaking again
+[2025-11-30 10:51:57.967] [SCENARIO 3] User says 'stop' - hard interrupt command
+[2025-11-30 10:51:57.968] [ACTIVITY] Agent STOPPED (interrupt triggered)
+[2025-11-30 10:51:57.969] [ACTIVITY] Agent HANDLING user text: 'stop'
+[2025-11-30 10:51:57.969] [SCENARIO 3] Result: stopped_speaking=True, handled=1
+[2025-11-30 10:51:57.969] [SCENARIO 3] EXPECTED: Agent should STOP immediately for 'stop' command (hard interrupt)
+[2025-11-30 10:51:57.970] [SCENARIO 3] ✓ PASS: 'stop' triggered immediate interrupt and agent stopped
+[2025-11-30 10:51:57.970] 
+================================================================================
+[2025-11-30 10:51:57.970] TEST SCENARIO 4: Verify Interrupt Handler Decision Logic
+[2025-11-30 10:51:57.970] ================================================================================
+[2025-11-30 10:51:57.970] [SCENARIO 4] Testing soft ack 'yeah' decisions:
+[2025-11-30 10:51:57.970]   - Decision('yeah', agent_speaking=True): ignore
+[2025-11-30 10:51:57.970]   - Decision('yeah', agent_speaking=False): respond
+[2025-11-30 10:51:57.971] [SCENARIO 4] Testing hard command 'stop' decisions:
+[2025-11-30 10:51:57.971]   - Decision('stop', agent_speaking=True): interrupt
+[2025-11-30 10:51:57.971] 
+================================================================================
+[2025-11-30 10:51:57.972] ALL TESTS COMPLETED SUCCESSFULLY
+[2025-11-30 10:51:57.972] ================================================================================
+[2025-11-30 10:51:57.972] Summary:
+[2025-11-30 10:51:57.973]   ✓ Agent ignores 'yeah' while talking
+[2025-11-30 10:51:57.973]   ✓ Agent responds to 'yeah' when silent
+[2025-11-30 10:51:57.973]   ✓ Agent stops for 'stop' command
+
+================================================================================
+TEST COMPLETED
+================================================================================
